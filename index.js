@@ -17,8 +17,8 @@ app.post("/api/chat", async (req, res) => {
     try {
         const messages = req.body.messages;
 
-            if (!Array.isArray(messages)) {
-                return res.status(400).json({ 
+        if (!Array.isArray(messages)) {
+            return res.status(400).json({ 
                 error: "message harus berupa array"
             });
         }
@@ -53,3 +53,91 @@ app.post("/api/chat", async (req, res) => {
             });
         }
 
+        // Header untuk streaming
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+                break;
+            }
+
+            buffer += decoder.decode(value, {
+                stream: true 
+            });
+
+            const lines = buffer.split("\n");
+
+            // simpan bagian terakhir karena mungkin belum lengkap
+            buffer = lines.pop();
+
+            for (const line of lines) {
+
+                const trimmedLine = line.trim();
+
+                // PERBAIKAN 1: Menghilangkan tanda kurung tutup berlebih (sebelumnya `if (trimmedLine))`)
+                if (!trimmedLine) {
+                    continue;
+                }
+
+                // PERBAIKAN 2: Mengubah `continue` menjadi `!` agar mengecek baris yang diawali "data: "
+                if (!trimmedLine.startsWith("data: ")) {
+                    continue;
+                }
+
+                const data = trimmedLine.slice(5).trim();
+
+                if (data === "[DONE]") {
+                    continue;
+                }
+
+                try {
+
+                    const json = JSON.parse(data);
+
+                    const content = json.choices[0].delta.content;
+
+                    if (content) {
+                        res.write(`data: ${JSON.stringify(content)}\n\n`);
+                    }
+
+                } catch (error) {
+                    console.error(
+                        "gagal parsing streaming data:",
+                        error
+                    );
+                }
+            }
+        }
+
+        res.write("data: [DONE]\n\n");
+        res.end();
+
+    } catch (error) {
+
+        console.error("Server Error:", error);
+
+        if (!res.headersSent) {
+            res.status(500).json({
+                error: "Terjadi kesalahan pada server"
+            });
+        } else {
+            // PERBAIKAN 3: Memperbaiki string template multi-line dan format objek JSON yang tidak valid di res.write
+            res.write(
+                `data: ${JSON.stringify({ error: "terjadi kesalahan pada server" })}\n\n`
+            );
+            
+            res.end();
+        }
+    }
+});
+
+                 
