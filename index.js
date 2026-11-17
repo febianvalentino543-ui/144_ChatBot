@@ -34,7 +34,7 @@ app.post("/api/chat", async (req, res) => {
                 },
 
                 body: JSON.stringify({
-                    model: "inclusionai/ling-3.2-flash:free",
+                    model: "google/gemini-3.8-flash",
                     messages: messages,
                     temperature: 0.7,
                     max_tokens: 1000,
